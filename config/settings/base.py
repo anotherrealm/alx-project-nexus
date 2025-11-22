@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     'apps.core',
     'rest_framework',
     'apps.users',
+    'apps.movies',
+
 
 
 
