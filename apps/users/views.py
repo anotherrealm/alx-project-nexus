@@ -64,5 +64,12 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        user = request.user
+        return Response(
+            {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
