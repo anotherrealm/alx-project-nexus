@@ -1,6 +1,7 @@
 """
 TMDb API service for fetching movie data.
 """
+import os
 import requests
 from django.conf import settings
 from django.core.cache import cache
@@ -9,40 +10,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class TMDbService:
     """Service for interacting with TMDb API."""
 
     def __init__(self):
-        self.api_key = settings.TMDB_API_KEY
-        self.base_url = settings.TMDB_BASE_URL
+        self.api_key = os.environ.get('TMDB_API_KEY') or settings.TMDB_API_KEY
+        self.base_url = settings.TMDB_BASE_URL.rstrip('/')  # Ensure no trailing slash
+        
+        # Debug log to verify API key is loaded (masking part of the key for security)
+        if self.api_key:
+            masked_key = f"{self.api_key[:4]}...{self.api_key[-4:]}" if len(self.api_key) > 8 else "[invalid]"
+            logger.debug(f"TMDb API key loaded: {masked_key}")
+            logger.debug(f"TMDb Base URL: {self.base_url}")
+        else:
+            logger.error("TMDb API key is not set!")
         self.timeout = 10
 
-    def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
+    def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
         """
         Make a request to TMDb API.
         
         Args:
-            endpoint: API endpoint (e.g., '/movie/popular')
+            endpoint: API endpoint (e.g., 'movie/popular')
             params: Query parameters
             
         Returns:
-            Response data as dict or None if error
+            Response data as dict
+            
+        Raises:
+            requests.exceptions.RequestException: If the request fails
         """
         if params is None:
             params = {}
         
+        # Always include the API key
         params['api_key'] = self.api_key
         
-        url = f"{self.base_url}{endpoint}"
+        # Construct the URL
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
         try:
+            logger.debug(f"Making request to {url} with params: {params}")
             response = requests.get(url, params=params, timeout=self.timeout)
-            response.raise_for_status()
+            response.raise_for_status()  # Raises an HTTPError for bad responses
             return response.json()
         except requests.exceptions.RequestException as e:
             logger.error(f"TMDb API request failed: {e}")
-            return None
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response content: {e.response.text}")
+            raise  # Re-raise the exception to be handled by the view
 
     def _get_cached_or_fetch(self, cache_key: str, fetch_func, timeout: int = 600) -> Optional[Dict]:
         """
@@ -65,7 +82,7 @@ class TMDbService:
             cache.set(cache_key, data, timeout)
         return data
 
-    def get_trending_movies(self, page: int = 1, time_window: str = 'day') -> Optional[Dict]:
+    def get_trending_movies(self, page: int = 1, time_window: str = 'day') -> Dict:
         """
         Get trending movies.
         
@@ -75,15 +92,16 @@ class TMDbService:
             
         Returns:
             Trending movies data
+            
+        Raises:
+            requests.exceptions.RequestException: If the request fails
         """
-        cache_key = f"tmdb:trending:{time_window}:page:{page}"
-        
-        def fetch():
-            return self._make_request('/trending/movie/day', {'page': page})
-        
-        return self._get_cached_or_fetch(cache_key, fetch, timeout=600)  # 10 minutes
+        if time_window not in ['day', 'week']:
+            time_window = 'day'
+            
+        return self._make_request(f'trending/movie/{time_window}', {'page': page})
 
-    def get_popular_movies(self, page: int = 1) -> Optional[Dict]:
+    def get_popular_movies(self, page: int = 1) -> Dict:
         """
         Get popular movies.
         
@@ -92,13 +110,11 @@ class TMDbService:
             
         Returns:
             Popular movies data
+            
+        Raises:
+            requests.exceptions.RequestException: If the request fails
         """
-        cache_key = f"tmdb:popular:page:{page}"
-        
-        def fetch():
-            return self._make_request('/movie/popular', {'page': page})
-        
-        return self._get_cached_or_fetch(cache_key, fetch, timeout=600)  # 10 minutes
+        return self._make_request('movie/popular', {'page': page})
 
     def get_top_rated_movies(self, page: int = 1) -> Optional[Dict]:
         """
@@ -134,7 +150,7 @@ class TMDbService:
         
         return self._get_cached_or_fetch(cache_key, fetch, timeout=600)  # 10 minutes
 
-    def search_movies(self, query: str, page: int = 1) -> Optional[Dict]:
+    def search_movies(self, query: str, page: int = 1) -> Dict:
         """
         Search movies by query.
         
@@ -144,13 +160,19 @@ class TMDbService:
             
         Returns:
             Search results
+            
+        Raises:
+            requests.exceptions.RequestException: If the request fails
         """
-        cache_key = f"tmdb:search:{query.lower()}:page:{page}"
-        
-        def fetch():
-            return self._make_request('/search/movie', {'query': query, 'page': page})
-        
-        return self._get_cached_or_fetch(cache_key, fetch, timeout=300)  # 5 minutes
+        if not query or not query.strip():
+            return {
+                'page': 1,
+                'results': [],
+                'total_pages': 0,
+                'total_results': 0
+            }
+            
+        return self._make_request('search/movie', {'query': query, 'page': page})
 
     def get_movie_details(self, movie_id: int) -> Optional[Dict]:
         """

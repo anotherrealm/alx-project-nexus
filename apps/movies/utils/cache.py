@@ -1,100 +1,103 @@
-"""
-Cache utilities for movies app.
-"""
 from functools import wraps
 from django.core.cache import cache
 from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
-from typing import Optional, Callable, Union, Any
-import hashlib
-import json
 from rest_framework.request import Request
-
-
-def get_cache_key(prefix: str, *args, **kwargs) -> str:
-    """
-    Generate a cache key from prefix and arguments.
-    
-    Args:
-        prefix: Key prefix
-        *args: Positional arguments
-        **kwargs: Keyword arguments
-        
-    Returns:
-        Generated cache key
-    """
-    key_parts = [prefix]
-    key_parts.extend([str(arg) for arg in args])
-    key_parts.extend([f"{k}:{v}" for k, v in sorted(kwargs.items())])
-    key_string = '|'.join(key_parts)
-    return f"movies:{hashlib.md5(key_string.encode()).hexdigest()}"
-
-
-def cache_movie_data(key: str, data: dict, timeout: int = 3600):
-    """
-    Cache movie data.
-    
-    Args:
-        key: Cache key
-        data: Data to cache
-        timeout: Cache timeout in seconds
-    """
-    cache.set(key, data, timeout)
-
-
-def get_cached_movie_data(key: str) -> Optional[dict]:
-    """
-    Get cached movie data.
-    
-    Args:
-        key: Cache key
-        
-    Returns:
-        Cached data or None
-    """
-    return cache.get(key)
-
+from rest_framework.response import Response
 
 def cache_page_on_auth(anon_timeout: int, auth_timeout: int = None):
     """
     Decorator that caches a view with different timeouts for authenticated and anonymous users.
-    
-    Args:
-        anon_timeout: Cache timeout in seconds for anonymous users
-        auth_timeout: Cache timeout in seconds for authenticated users (defaults to anon_timeout / 3)
-        
-    Returns:
-        Decorated view function
+    Works with both class-based and function-based views.
     """
     if auth_timeout is None:
         auth_timeout = max(60, anon_timeout // 3)  # At least 1 minute for auth users
-        
+
     def decorator(view_func):
         @wraps(view_func)
-        def _wrapped_view(request: Request, *args, **kwargs):
-            # Choose timeout based on authentication status
-            timeout = auth_timeout if request.user.is_authenticated else anon_timeout
-            
-            # Generate a cache key based on the request
+        def _wrapped_view(view_or_request, *args, **kwargs):
+            # Handle class-based views (self is first argument)
+            if hasattr(view_or_request, 'request'):
+                view = view_or_request
+                request = view.request
+                is_class_based = True
+            else:
+                # Handle function-based views (request is first argument)
+                request = view_or_request
+                view = None
+                is_class_based = False
+
+            # Generate cache key
+            user_id = request.user.id if hasattr(request, 'user') and request.user.is_authenticated else 'anon'
             path = request.get_full_path()
-            user_id = request.user.id if request.user.is_authenticated else 'anon'
-            cache_key = f'view_cache::{user_id}:{path}'
-            
-            # Use Django's cache_page with our calculated timeout and key
-            return cache_page(timeout, key_prefix=cache_key)(view_func)(request, *args, **kwargs)
-            
+            cache_key = f'view_cache:{user_id}:{path}'
+
+            # Check cache
+            cached_data = cache.get(cache_key)
+            if cached_data is not None:
+                return Response(cached_data)
+
+            # Call the view
+            if is_class_based:
+                response = view_func(view, *args, **kwargs)
+            else:
+                response = view_func(request, *args, **kwargs)
+
+            # Cache the response data
+            if hasattr(response, 'data') and response.status_code == 200:
+                timeout = auth_timeout if hasattr(request, 'user') and request.user.is_authenticated else anon_timeout
+                cache.set(cache_key, response.data, timeout)
+
+            return response
+
         return _wrapped_view
     return decorator
-
 
 def method_cache_page_on_auth(anon_timeout: int, auth_timeout: int = None):
     """
     Method decorator version of cache_page_on_auth for class-based views.
     """
     def decorator(method):
-        return method_decorator(cache_page_on_auth(anon_timeout, auth_timeout), name='dispatch')(method)
+        return method_decorator(cache_page_on_auth(anon_timeout, auth_timeout))(method)
     return decorator
 
+def get_cache_key(prefix: str, *args) -> str:
+    """
+    Generate a cache key from a prefix and arguments.
+    
+    Args:
+        prefix: Cache key prefix
+        *args: Additional parts to include in the key
+        
+    Returns:
+        str: Generated cache key
+    """
+    key_parts = [str(prefix)] + [str(arg) for arg in args]
+    return ":".join(key_parts)
+
+def cache_movie_data(movie_id: int, data: dict, timeout: int = None):
+    """
+    Cache movie data.
+    
+    Args:
+        movie_id: Movie ID
+        data: Data to cache
+        timeout: Cache timeout in seconds (default: None, use default timeout)
+    """
+    cache_key = get_cache_key("movie", movie_id)
+    cache.set(cache_key, data, timeout)
+
+def get_cached_movie_data(movie_id: int) -> dict:
+    """
+    Get cached movie data.
+    
+    Args:
+        movie_id: Movie ID
+        
+    Returns:
+        dict: Cached movie data or None if not found
+    """
+    cache_key = get_cache_key("movie", movie_id)
+    return cache.get(cache_key)
 
 def invalidate_user_cache(user_id: int):
     """
@@ -116,10 +119,9 @@ def invalidate_user_cache(user_id: int):
             keys = redis_conn.keys(pattern)
             if keys:
                 redis_conn.delete(*keys)
-        except Exception:
-            # If Redis pattern matching fails, silently continue
+        except ImportError:
+            # Fallback to simple cache if redis is not available
             pass
-
 
 def cached_result(timeout: int = 300):
     """
@@ -131,21 +133,14 @@ def cached_result(timeout: int = 300):
     Returns:
         Decorated function
     """
-    def decorator(func: Callable):
+    def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
-            # Generate cache key
-            cache_key = get_cache_key(func.__name__, *args, **kwargs)
-            
-            # Try to get from cache
+            cache_key = get_cache_key(func.__name__, *args, *[f"{k}={v}" for k, v in kwargs.items()])
             result = cache.get(cache_key)
-            if result is not None:
-                return result
-            
-            # Call function and cache result
-            result = func(*args, **kwargs)
-            if result is not None:
+            if result is None:
+                result = func(*args, **kwargs)
                 cache.set(cache_key, result, timeout)
             return result
         return wrapper
     return decorator
-

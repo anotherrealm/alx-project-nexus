@@ -13,17 +13,15 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env file (optional)
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    # dotenv not installed, will use environment variables or defaults
-    pass
+# dotenv is already loaded at the top of the file
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-mhp+%f19kb6zcd3t6a8cv26-sn6@0%@8e%(almc=&q)ifz0gwn")
@@ -187,6 +185,12 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
+# TMDb API Configuration
+TMDB_API_KEY = os.getenv('TMDB_API_KEY')
+if not TMDB_API_KEY:
+    raise ValueError("TMDB_API_KEY environment variable is not set. Please add it to your .env file.")
+TMDB_BASE_URL = os.getenv('TMDB_BASE_URL', 'https://api.themoviedb.org/3')
+
 # Redis Cache Configuration
 # Fallback to local memory cache if Redis is not available
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
@@ -194,18 +198,17 @@ REDIS_PORT = os.getenv('REDIS_PORT', '6379')
 REDIS_DB = os.getenv('REDIS_DB', '0')
 
 try:
-    import django_redis
     CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-            'LOCATION': f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
-            'OPTIONS': {
-                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            },
-            'KEY_PREFIX': 'movie_recommendation',
-            'TIMEOUT': 300,  # 5 minutes default
-        }
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'movie_recommendation',
+        'TIMEOUT': 300,  # 5 minutes default
     }
+}
 except ImportError:
     # Fallback to local memory cache if django-redis is not installed
     CACHES = {

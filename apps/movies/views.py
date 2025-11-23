@@ -1,18 +1,51 @@
 """
 Views for the movies app.
 """
+import logging
+from functools import wraps
+from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
 from rest_framework import status, viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from rest_framework.pagination import PageNumberPagination
 from .models import Movie, FavoriteMovie
 from .serializers import MovieSerializer, FavoriteMovieSerializer, MovieSearchSerializer
 from .services.tmdb_service import TMDbService
-from .utils.cache import cache_page_on_auth
+
+logger = logging.getLogger(__name__)
+
+def cache_page_on_auth(anon_timeout, auth_timeout=None):
+    """
+    Decorator to cache API responses with different timeouts for authenticated and anonymous users.
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(self, request, *args, **kwargs):
+            # Generate cache key based on user and request
+            user_key = f"user_{request.user.id}" if request.user.is_authenticated else "anon"
+            cache_key = f"view_cache:{user_key}:{request.get_full_path()}"
+            
+            # Try to get cached response
+            cached_response = cache.get(cache_key)
+            if cached_response is not None:
+                return Response(cached_response)
+            
+            # Call the view if not in cache
+            response = view_func(self, request, *args, **kwargs)
+            
+            # Cache the response if it's a successful response
+            if response.status_code == 200:
+                timeout = auth_timeout if request.user.is_authenticated else anon_timeout
+                cache.set(cache_key, response.data, timeout)
+            
+            return response
+        return _wrapped_view
+    return decorator
 
 
 class MovieViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
@@ -22,6 +55,10 @@ class MovieViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
     permission_classes = [AllowAny]
     lookup_field = 'tmdb_id'
     lookup_url_kwarg = 'tmdb_id'
+    
+    @method_decorator(cache_page_on_auth(60 * 15, 60 * 5))  # 15m for anon, 5m for auth
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
     
     def get_queryset(self):
         """Return the queryset with select_related and prefetch_related for optimization."""
@@ -66,100 +103,98 @@ class MovieViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
                 status=status.HTTP_404_NOT_FOUND
             )
             
-        return Response(status=status.HTTP_204_NO_CONTENT
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class MovieListMixin:
-    """Mixin for list views that use TMDb API."""
+class TrendingMoviesView(APIView):
+    """API View for trending movies."""
     permission_classes = [AllowAny]
-    serializer_class = MovieSearchSerializer
     
-    def get_serializer_context(self):
-        """Add request to serializer context."""
-        return {'request': self.request}
-    
-    def get_queryset(self):
-        """Return an empty queryset since we're using TMDb API."""
-        return Movie.objects.none()
-    
-    def get_serializer(self, *args, **kwargs):
-        """Return the serializer instance."""
-        if 'data' in kwargs:
-            return super().get_serializer(*args, **kwargs)
-        return self.serializer_class(data=self.get_data(), context=self.get_serializer_context())
-    
-    def get_data(self):
-        """Get data from TMDb API."""
-        raise NotImplementedError("Subclasses must implement get_data()")
-    
-    def list(self, request, *args, **kwargs):
-        """Handle GET request."""
-        page = request.query_params.get('page', 1)
+    def get(self, request, *args, **kwargs):
+        """Handle GET request for trending movies."""
         try:
-            page = int(page)
-            if page < 1:
-                page = 1
-        except (ValueError, TypeError):
-            page = 1
+            page = int(request.query_params.get('page', 1))
+            time_window = request.query_params.get('time_window', 'day')
             
-        data = self.get_data()
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        return Response(serializer.data)
-
-
-class TrendingMoviesView(MovieListMixin, viewsets.GenericViewSet):
-    """View for trending movies."""
-    
-    @cache_page_on_auth(60 * 15)  # 15 minutes cache for anonymous users, 5 minutes for authenticated
-    def get_data(self):
-        """Get trending movies from TMDb API."""
-        page = int(self.request.query_params.get('page', 1))
-        time_window = self.request.query_params.get('time_window', 'day')
-        
-        if time_window not in ['day', 'week']:
-            time_window = 'day'
+            if time_window not in ['day', 'week']:
+                time_window = 'day'
+                
+            tmdb_service = TMDbService()
+            data = tmdb_service.get_trending_movies(page=page, time_window=time_window)
+            return Response(data)
             
-        tmdb_service = TMDbService()
-        return tmdb_service.get_trending_movies(page=page, time_window=time_window)
+        except ValueError as e:
+            return Response(
+                {'error': 'Invalid request parameters'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error fetching trending movies: {str(e)}")
+            return Response(
+                {'error': 'Failed to fetch trending movies'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
-class PopularMoviesView(MovieListMixin, viewsets.GenericViewSet):
-    """View for popular movies."""
+class PopularMoviesView(APIView):
+    """API View for popular movies."""
+    permission_classes = [AllowAny]
     
-    @cache_page_on_auth(60 * 60)  # 1 hour cache for anonymous users, 30 minutes for authenticated
-    def get_data(self):
-        """Get popular movies from TMDb API."""
-        page = int(self.request.query_params.get('page', 1))
-        tmdb_service = TMDbService()
-        return tmdb_service.get_popular_movies(page=page)
-
-
-class SearchMoviesView(MovieListMixin, viewsets.GenericViewSet):
-    """View for searching movies."""
-    
-    @cache_page_on_auth(60 * 60 * 2)  # 2 hours cache for anonymous users, 1 hour for authenticated
-    def get_data(self):
-        """Search movies from TMDb API."""
-        query = self.request.query_params.get('query', '').strip()
-        page = int(self.request.query_params.get('page', 1))
-        
-        if not query:
-            return {
-                'results': [],
-                'page': 1,
-                'total_pages': 0,
-                'total_results': 0
-            }
+    def get(self, request, *args, **kwargs):
+        """Handle GET request for popular movies."""
+        try:
+            page = int(request.query_params.get('page', 1))
+            tmdb_service = TMDbService()
+            data = tmdb_service.get_popular_movies(page=page)
+            return Response(data)
             
-        tmdb_service = TMDbService()
-        return tmdb_service.search_movies(query=query, page=page)
+        except ValueError as e:
+            return Response(
+                {'error': 'Invalid page number'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error fetching popular movies: {str(e)}")
+            return Response(
+                {'error': 'Failed to fetch popular movies'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class SearchMoviesView(APIView):
+    """API View for searching movies."""
+    permission_classes = [AllowAny]
+    
+    def get(self, request, *args, **kwargs):
+        """Handle GET request for movie search."""
+        try:
+            query = request.query_params.get('query', '').strip()
+            page = int(request.query_params.get('page', 1))
+            
+            tmdb_service = TMDbService()
+            data = tmdb_service.search_movies(query=query, page=page)
+            return Response(data)
+            
+        except ValueError as e:
+            return Response(
+                {'error': 'Invalid request parameters'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error searching movies: {str(e)}")
+            return Response(
+                {'error': 'Failed to search movies'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 
 
 class FavoriteMovieViewSet(viewsets.ModelViewSet):
     """ViewSet for user's favorite movies."""
     serializer_class = FavoriteMovieSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = PageNumberPagination  # Add pagination
     
     def get_queryset(self):
         """Return only the current user's favorite movies."""
@@ -170,3 +205,13 @@ class FavoriteMovieViewSet(viewsets.ModelViewSet):
         movie_id = serializer.validated_data.get('movie_id')
         movie = get_object_or_404(Movie, pk=movie_id)
         serializer.save(user=self.request.user, movie=movie)
+        
+    def list(self, request, *args, **kwargs):
+        """Override list to ensure pagination."""
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
