@@ -26,4 +26,6 @@ COPY . .
 RUN python manage.py collectstatic --noinput || echo "Warning: Collectstatic failed, continuing"
 
 # Run the application
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "config.wsgi:application"]
+
+EXPOSE 8000
