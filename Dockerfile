@@ -40,7 +40,4 @@ COPY . .
 RUN python manage.py collectstatic --noinput
 
 # Run the application with Gunicorn, binding to the dynamic $PORT
-# IMPORTANT: When the container starts running, the real SECRET_KEY 
-# from Railway's environment variables will overwrite this temporary one, 
-# ensuring token signing and validation use the same consistent key.
 CMD gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 4 --worker-class gthread --threads 2
