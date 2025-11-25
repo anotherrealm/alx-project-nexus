@@ -30,3 +30,4 @@ RUN python manage.py collectstatic --noinput || echo "Warning: Collectstatic fai
 CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT config.wsgi:application"]
 
 EXPOSE $PORT
+
