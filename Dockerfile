@@ -4,8 +4,8 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DJANGO_SETTINGS_MODULE=config.settings.production \
-    PORT=8000
+    PORT=8000 \
+    DJANGO_SETTINGS_MODULE=config.settings.production
 
 # Set work directory
 WORKDIR /app
@@ -27,7 +27,4 @@ COPY . .
 RUN python manage.py collectstatic --noinput || echo "Warning: Collectstatic failed, continuing"
 
 # Run the application
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT config.wsgi:application"]
-
-EXPOSE $PORT
-
+CMD gunicorn --bind 0.0.0.0:$PORT config.wsgi:application
