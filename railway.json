@@ -3,7 +3,8 @@
   "build": {
     "builder": "dockerfile",
     "args": {
-      "TMDB_API_KEY": "${{TMDB_API_KEY}}"
+      "TMDB_API_KEY": "${{TMDB_API_KEY}}",
+      "SECRET_KEY": "${{SECRET_KEY}}" 
     }
   }
 }

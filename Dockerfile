@@ -1,10 +1,13 @@
 # Use Python 3.11 slim image
 FROM python:3.11-slim
 
-# 1. ADD: Accept the build argument from railway.json
+# 1. NEW: Accept build arguments from railway.json
 ARG TMDB_API_KEY
-# 2. ADD: Convert the build argument into a standard ENV variable
+ARG SECRET_KEY
+
+# 2. NEW: Convert build arguments into standard ENV variables for the build phase
 ENV TMDB_API_KEY=$TMDB_API_KEY
+ENV SECRET_KEY=$SECRET_KEY
 
 # Set general environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -30,7 +33,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Collect static files (This step now has access to TMDB_API_KEY via ENV)
+# Collect static files (This step now has access to TMDB_API_KEY and SECRET_KEY)
 RUN python manage.py collectstatic --noinput
 
 # Create a start script
