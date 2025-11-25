@@ -1,11 +1,11 @@
 # Use Python 3.11 slim image
 FROM python:3.11-slim
 
-# 1. NEW: Accept build arguments from railway.json
+# 1. Accept build arguments from railway.json (required for collectstatic)
 ARG TMDB_API_KEY
 ARG SECRET_KEY
 
-# 2. NEW: Convert build arguments into standard ENV variables for the build phase
+# 2. Convert build arguments into standard ENV variables for the build phase
 ENV TMDB_API_KEY=$TMDB_API_KEY
 ENV SECRET_KEY=$SECRET_KEY
 
@@ -33,13 +33,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Collect static files (This step now has access to TMDB_API_KEY and SECRET_KEY)
+# Collect static files (This step should now succeed)
 RUN python manage.py collectstatic --noinput
 
-# Create a start script
-RUN echo '#!/bin/sh\n\
-exec gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 4 --worker-class gthread --threads 2' > /start && \
-    chmod +x /start
 
-# Run the application
-CMD ["/start"]
+# Run the application with Gunicorn, binding to the dynamic $PORT
+CMD gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 4 --worker-class gthread --threads 2
