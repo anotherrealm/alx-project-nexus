@@ -71,14 +71,24 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-# Default database configuration that works with DATABASE_URL
+# Simple database configuration
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/postgres'),
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', 'postgres'),
+        'USER': os.getenv('POSTGRES_USER', 'postgres'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'),
+        'HOST': os.getenv('POSTGRES_HOST', 'db'),
+        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+    }
+}
+
+# If DATABASE_URL is set, use it instead
+if 'DATABASE_URL' in os.environ:
+    DATABASES['default'] = dj_database_url.config(
         conn_max_age=600,
         ssl_require=os.getenv('DATABASE_SSL', 'False').lower() == 'true'
     )
-}
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
