@@ -59,9 +59,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy compiled Python packages and application code from the builder stage
-# CRITICAL FIX: Explicitly copy the 'bin' directory where executables like gunicorn are installed.
-COPY --from=builder /usr/local/bin/ /usr/local/bin/
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+# CRITICAL FIX: Copy the entire Python local installation prefix to ensure all binaries (like gunicorn) 
+# and library dependencies are correctly included in the final slim image.
+COPY --from=builder /usr/local/ /usr/local/
 COPY --from=builder /app /app
 
 # Command to run the application using gunicorn
