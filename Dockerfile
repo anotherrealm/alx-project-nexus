@@ -13,6 +13,7 @@ ARG SECRET_KEY=temp_build_key
 ENV SECRET_KEY=$SECRET_KEY
 ENV DEBUG=False
 ENV DJANGO_SETTINGS_MODULE=config.settings.production
+ENV DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,10 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set work directory
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
+# Install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies including Gunicorn
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Copy project
@@ -43,12 +42,9 @@ FROM python:3.10-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONFAULTHANDLER=1 \
-    DJANGO_SETTINGS_MODULE=config.settings.production \
-    PORT=8000 \
-    WEB_CONCURRENCY=3 \
-    PYTHONHASHSEED=random \
-    PYTHONPATH=/app
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=100 \
+    PYTHONFAULTHANDLER=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -62,24 +58,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN addgroup --system django \
     && adduser --system --ingroup django django
 
-# Set work directory and permissions
+# Set work directory
 WORKDIR /app
-RUN chown -R django:django /app
 
-# Copy Python packages and application code from the builder stage
-COPY --from=builder --chown=django:django /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
-COPY --from=builder --chown=django:django /usr/local/bin/gunicorn /usr/local/bin/gunicorn
+# Copy Python dependencies from builder
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
+
+# Copy project files
 COPY --from=builder --chown=django:django /app /app
+
+# Copy and set up the entrypoint
+COPY --chown=django:django start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Switch to non-root user
 USER django
 
-# Expose the port the app runs on
-EXPOSE $PORT
-
-# Copy and set permissions for the start script
-COPY --chown=django:django start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
-# Command to run the application
+# Run the application
 CMD ["./start.sh"]
