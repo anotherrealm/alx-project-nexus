@@ -2,11 +2,9 @@ import os
 from .base import *
 
 DEBUG = True
-
 ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
 
-# Development-specific database (can use SQLite for simplicity)
-# Override in .env if you want to use PostgreSQL
+# Database configuration
 if not os.getenv('DB_ENGINE'):
     DATABASES = {
         'default': {
@@ -15,10 +13,9 @@ if not os.getenv('DB_ENGINE'):
         }
     }
 
-# Email backend for development
+# Email and logging for development
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-# Logging for development
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

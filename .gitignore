@@ -20,6 +20,9 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Virtual Environment
 venv/
@@ -28,6 +31,7 @@ ENV/
 env.bak/
 venv.bak/
 .venv
+.python-version
 
 # Django
 *.log
@@ -37,6 +41,8 @@ db.sqlite3-journal
 /media
 /staticfiles
 /static
+*.sqlite3
+*.sqlite3-*
 
 # Environment variables
 .env
@@ -44,10 +50,27 @@ db.sqlite3-journal
 .env.*.local
 .env.prod
 .env.prod.example
+.env.*
+!.env.example
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+/app  # Explicitly ignore the app directory if it gets recreated
 *.swp
 *.swo
 *~

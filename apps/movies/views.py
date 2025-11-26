@@ -1,6 +1,3 @@
-"""
-Views for the movies app.
-"""
 import logging
 from functools import wraps
 from django.core.cache import cache
@@ -20,25 +17,18 @@ from .services.tmdb_service import TMDbService
 logger = logging.getLogger(__name__)
 
 def cache_page_on_auth(anon_timeout, auth_timeout=None):
-    """
-    Decorator to cache API responses with different timeouts for authenticated and anonymous users.
-    """
+    """Cache API responses with different timeouts for auth and anon users."""
     def decorator(view_func):
         @wraps(view_func)
         def _wrapped_view(self, request, *args, **kwargs):
-            # Generate cache key based on user and request
             user_key = f"user_{request.user.id}" if request.user.is_authenticated else "anon"
             cache_key = f"view_cache:{user_key}:{request.get_full_path()}"
             
-            # Try to get cached response
-            cached_response = cache.get(cache_key)
-            if cached_response is not None:
+            if cached_response := cache.get(cache_key):
                 return Response(cached_response)
             
-            # Call the view if not in cache
             response = view_func(self, request, *args, **kwargs)
             
-            # Cache the response if it's a successful response
             if response.status_code == 200:
                 timeout = auth_timeout if request.user.is_authenticated else anon_timeout
                 cache.set(cache_key, response.data, timeout)

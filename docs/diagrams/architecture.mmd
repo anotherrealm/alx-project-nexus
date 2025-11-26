@@ -1,0 +1,23 @@
+graph TD
+    A["🌐 Web/Mobile App"] -->|HTTPS| B["Django REST API"]
+    
+    B --> C["🔐 JWT Auth"]
+    B --> D["📊 Business Logic"]
+    B --> E["⚡ Redis Cache"]
+    
+    D --> F["🎬 TMDb API"]
+    
+    E --> G[("🗄️ PostgreSQL")]
+    E --> H[("💾 Redis")]
+    
+    C -.->|validates| D
+    D -.->|caches| E
+    
+    style A fill:#ff9999
+    style B fill:#99ccff
+    style C fill:#99ff99
+    style D fill:#99ff99
+    style E fill:#ffcc99
+    style F fill:#ff9999
+    style G fill:#cccccc
+    style H fill:#cccccc

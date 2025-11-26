@@ -1,0 +1,58 @@
+erDiagram
+    USER ||--o{ FAVORITE_MOVIE : has
+    MOVIE ||--o{ FAVORITE_MOVIE : in
+    USER ||--o{ MOVIE_REVIEW : writes
+    MOVIE ||--o{ MOVIE_REVIEW : has
+    USER ||--|| USER_PREFERENCE : has
+
+    USER {
+        uuid id PK
+        string username
+        string email
+        string password_hash
+        string first_name
+        string last_name
+        boolean is_active
+        boolean is_staff
+        datetime date_joined
+        datetime last_login
+    }
+
+    FAVORITE_MOVIE {
+        uuid id PK
+        uuid user_id FK
+        uuid movie_id FK
+        datetime created_at
+        text notes
+    }
+
+    MOVIE {
+        uuid id PK
+        integer tmdb_id
+        string title
+        text overview
+        date release_date
+        string poster_path
+        string backdrop_path
+        decimal vote_average
+        integer vote_count
+    }
+
+    MOVIE_REVIEW {
+        uuid id PK
+        uuid user_id FK
+        uuid movie_id FK
+        integer rating
+        text review_text
+        datetime created_at
+        datetime updated_at
+    }
+
+    USER_PREFERENCE {
+        uuid id PK
+        uuid user_id FK
+        jsonb preferred_genres
+        jsonb preferred_languages
+        decimal min_rating
+        datetime updated_at
+    }
