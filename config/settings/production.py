@@ -7,13 +7,17 @@ import logging.config
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
-if not SECRET_KEY:
-    raise ValueError('SECRET_KEY environment variable is not set')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# Allow build to proceed without SECRET_KEY, but require it at runtime
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY and not DEBUG:
+    raise ValueError('SECRET_KEY environment variable is not set in production')
+elif not SECRET_KEY:
+    # Use a default key only for build process
+    SECRET_KEY = 'temporary-build-key-only-12345'
 
 # Security settings
 SECURE_SSL_REDIRECT = not DEBUG

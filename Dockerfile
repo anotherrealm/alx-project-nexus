@@ -1,5 +1,4 @@
 # --- BUILDER STAGE ---
-# Purpose: Compile all Python packages and collect static files into a minimal layer.
 FROM python:3.10-slim as builder
 
 # Set environment variables
@@ -9,7 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DEFAULT_TIMEOUT=100 \
     PYTHONFAULTHANDLER=1
 
-# Set DJANGO_SETTINGS_MODULE for the build steps (collectstatic)
+# Set build-time environment variables
+ARG SECRET_KEY=temp_build_key
+ENV SECRET_KEY=$SECRET_KEY
+ENV DEBUG=False
 ENV DJANGO_SETTINGS_MODULE=config.settings.production
 
 # Install system dependencies
@@ -32,11 +34,10 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 # Copy project
 COPY . .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput --no-input
+# Collect static files with a temporary secret key
+RUN python manage.py collectstatic --noinput
 
 # --- PRODUCTION STAGE ---
-# Purpose: Create the final, minimal image with only runtime dependencies.
 FROM python:3.10-slim
 
 # Set environment variables
