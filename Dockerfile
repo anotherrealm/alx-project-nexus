@@ -11,8 +11,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ENV DJANGO_SETTINGS_MODULE=config.settings
 
 # Install CRITICAL system dependencies for building Python packages.
-# These include build tools and headers for common packages like psycopg2 (libpq-dev) 
-# and image processing libraries (libjpeg-dev, zlib1g-dev for Pillow).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -30,14 +28,12 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies
-# This step requires the system dependencies installed above.
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project
 COPY . .
 
 # Collect static files
-# This command is now run using the DJANGO_SETTINGS_MODULE environment variable.
 RUN python manage.py collectstatic --noinput
 
 # --- PRODUCTION STAGE ---
@@ -59,10 +55,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy compiled Python packages and application code from the builder stage
-# CRITICAL FIX: Copy the entire Python local installation prefix to ensure all binaries (like gunicorn) 
-# and library dependencies are correctly included in the final slim image.
+# Copy the entire Python local installation prefix to ensure all binaries and library dependencies are included.
 COPY --from=builder /usr/local/ /usr/local/
 COPY --from=builder /app /app
 
-# Command to run the application using gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "--worker-class", "gthread", "--threads", "2", "config.wsgi"]
+# Expose the port the app runs on
+EXPOSE $PORT
+
+# FINAL CRITICAL FIX: Run gunicorn as a Python module to avoid PATH/executable location issues.
+CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "--worker-class", "gthread", "--threads", "2", "config.wsgi"]
