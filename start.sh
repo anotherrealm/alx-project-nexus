@@ -1,20 +1,33 @@
 #!/bin/bash
-
-# Exit on error
-set -e
+set -o errexit
+set -o pipefail
+set -o nounset
 
 # Wait for the database to be ready
 echo "Waiting for database..."
-while ! nc -z db 5432; do
-  sleep 0.5
+until python -c 'import os; import sys; import psycopg2; \
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))' 2>/dev/null; do
+  echo "Waiting for database connection..."
+  sleep 1
 done
-echo "Database is ready!"
 
 # Run migrations
-python manage.py migrate
+echo "Running migrations..."
+python manage.py migrate --noinput
 
-# Create superuser if it doesn't exist
-echo "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.filter(username='admin').exists() or User.objects.create_superuser('admin', 'admin@example.com', 'admin')" | python manage.py shell
+# Collect static files
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
 
-# Start the server
-python manage.py runserver 0.0.0.0:8000
+# Start Gunicorn
+echo "Starting Gunicorn..."
+exec gunicorn \
+    --bind "0.0.0.0:$PORT" \
+    --workers "$WEB_CONCURRENCY" \
+    --worker-class "gthread" \
+    --threads "2" \
+    --access-logfile "-" \
+    --error-logfile "-" \
+    --log-level "info" \
+    --timeout "120" \
+    "config.wsgi:application"

@@ -55,6 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libjpeg62-turbo \
     zlib1g \
+    netcat \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and switch to it
@@ -76,18 +77,9 @@ USER django
 # Expose the port the app runs on
 EXPOSE $PORT
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:$PORT/health/ || exit 1
+# Copy and set permissions for the start script
+COPY --chown=django:django start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Command to run the application
-CMD ["gunicorn", \
-    "--bind", "0.0.0.0:$PORT", \
-    "--workers", "$WEB_CONCURRENCY", \
-    "--worker-class", "gthread", \
-    "--threads", "2", \
-    "--access-logfile", "-", \
-    "--error-logfile", "-", \
-    "--log-level", "info", \
-    "--timeout", "120", \
-    "config.wsgi:application"]
+CMD ["./start.sh"]
