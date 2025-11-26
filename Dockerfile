@@ -7,10 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=100
+
 # Set DJANGO_SETTINGS_MODULE for the build steps (collectstatic)
 ENV DJANGO_SETTINGS_MODULE=config.settings
 
-# Install CRITICAL system dependencies for building Python packages.
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -18,17 +19,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pip and required packages
-RUN pip install --upgrade pip
-
 # Set work directory
 WORKDIR /app
 
-# Copy only requirements first to leverage Docker cache
+# Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies including Gunicorn
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Copy project
 COPY . .
@@ -43,10 +41,9 @@ FROM python:3.10-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # The runtime setting uses the production/default settings path
-    DJANGO_SETTINGS_MODULE=config.settings 
+    DJANGO_SETTINGS_MODULE=config.settings
 
-# Install only RUNTIME system dependencies (e.g., the PostgreSQL client library)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
@@ -54,13 +51,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set work directory
 WORKDIR /app
 
-# Copy compiled Python packages and application code from the builder stage
-# Copy the entire Python local installation prefix to ensure all binaries and library dependencies are included.
-COPY --from=builder /usr/local/ /usr/local/
+# Copy Python packages and application code from the builder stage
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
 COPY --from=builder /app /app
 
 # Expose the port the app runs on
 EXPOSE $PORT
 
-# FINAL CRITICAL FIX: Run gunicorn as a Python module to avoid PATH/executable location issues.
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "--worker-class", "gthread", "--threads", "2", "config.wsgi"]
+# Command to run the application
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:$PORT", "--workers", "3", "--worker-class", "gthread", "--threads", "2"]
