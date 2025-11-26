@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=100
+# Set DJANGO_SETTINGS_MODULE for the build steps (collectstatic)
+ENV DJANGO_SETTINGS_MODULE=config.settings
 
 # Install CRITICAL system dependencies for building Python packages.
 # These include build tools and headers for common packages like psycopg2 (libpq-dev) 
@@ -35,7 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Collect static files
-# Note: You must ensure config.settings.production points to the correct static file settings.
+# This command is now run using the DJANGO_SETTINGS_MODULE environment variable.
 RUN python manage.py collectstatic --noinput
 
 # --- PRODUCTION STAGE ---
@@ -45,7 +47,7 @@ FROM python:3.10-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # Ensure this is set to your production settings file
+    # The runtime setting uses the production/default settings path
     DJANGO_SETTINGS_MODULE=config.settings 
 
 # Install only RUNTIME system dependencies (e.g., the PostgreSQL client library)
