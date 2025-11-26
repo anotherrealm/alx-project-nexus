@@ -71,7 +71,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-# Simple database configuration
+# Default database configuration
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -83,12 +83,14 @@ DATABASES = {
     }
 }
 
-# If DATABASE_URL is set, use it instead
+# If DATABASE_URL is set, use it instead (without conn_health_checks)
 if 'DATABASE_URL' in os.environ:
-    DATABASES['default'] = dj_database_url.config(
+    db_from_env = dj_database_url.config(
+        default=os.getenv('DATABASE_URL'),
         conn_max_age=600,
         ssl_require=os.getenv('DATABASE_SSL', 'False').lower() == 'true'
     )
+    DATABASES['default'].update(db_from_env)
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
