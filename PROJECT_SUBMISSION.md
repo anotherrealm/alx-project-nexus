@@ -7,7 +7,7 @@ A high-performance Django REST API for discovering and managing movie favorites 
 
 
 ### . Presentation Deck
-[🔗 View Presentation on Google Slides](https://docs.google.com/presentation)
+[🔗 View Presentation on Google Slides](https://docs.google.com/presentation/d/12wTMKZx-GmlbF4HTLOnWUbF5ZqNt4WPI/edit?usp=sharing&ouid=111064942789446264145&rtpof=true&sd=true)
 
 
 ### . Hosted API
