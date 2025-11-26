@@ -1,45 +1,60 @@
-FROM python:3.10-slim
+# Build stage
+FROM python:3.10-slim as builder
 
-# Set general environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV HOST=0.0.0.0
-ENV DJANGO_SETTINGS_MODULE=config.settings.production
-
-# Set work directory
-WORKDIR /app
-
-# 1. TEMPORARILY SET BUILD-TIME ENV FOR COLLECTSTATIC
-# This is necessary because SimpleJWT tries to read settings.SECRET_KEY 
-# during the build phase (collectstatic) but Railway's real SECRET_KEY 
-# is only available at runtime.
-ARG TMDB_API_KEY
-ARG SECRET_KEY_BUILD
-
-# Set ENV variables needed for the build (collectstatic)
-ENV TMDB_API_KEY=$TMDB_API_KEY
-# Use a simple, non-sensitive dummy value for the build only
-ENV SECRET_KEY=${SECRET_KEY_BUILD:-TEMPORARY_BUILD_KEY_4789} 
-
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=100 \
+    POETRY_VERSION=1.8.2
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libpq-dev \
-    python3-dev \
-    default-libmysqlclient-dev \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install pip and required packages
+RUN pip install --upgrade pip && \
+    pip install poetry==$POETRY_VERSION
+
+# Set work directory
+WORKDIR /app
+
+# Copy only requirements first to leverage Docker cache
+COPY pyproject.toml poetry.lock* ./
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project
 COPY . .
 
-# Collect static files (This step will now succeed using the TEMPORARY_BUILD_KEY)
+# Collect static files
 RUN python manage.py collectstatic --noinput
 
-# Run the application with Gunicorn, binding to the dynamic $PORT
-CMD gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 4 --worker-class gthread --threads 2
+# Production stage
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DJANGO_SETTINGS_MODULE=config.settings.production
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set work directory
+WORKDIR /app
+
+# Copy from builder
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /app /app
+
+# Expose the port the app runs on
+EXPOSE $PORT
+
+# Command to run the application
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "--worker-class", "gthread", "--threads", "2", "config.wsgi"]
